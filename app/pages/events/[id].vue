@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useApi } from '../../composables/useApi'
 import { useAuthStore } from '../../stores/auth'
 
@@ -33,13 +33,76 @@ interface PlayerDoc {
   }
 }
 
+interface AttendanceRecord {
+  id: string
+  eventId: string | EventDoc
+  playerId: string | PlayerDoc
+  status: 'pending' | 'attending' | 'declined' | 'attended' | 'excused'
+  notes?: string
+  updatedBy: string
+  updatedAt: string
+}
+
+interface AttendanceResponse {
+  docs: AttendanceRecord[]
+  totalDocs: number
+}
+
 const event = ref<EventDoc | null>(null)
-const players = ref<PlayerDoc[]>([])
+const attendance = ref<AttendanceRecord[]>([])
 const loading = ref(true)
-const playersLoading = ref(false)
+const attendanceLoading = ref(false)
+const lockLoading = ref(false)
 const error = ref('')
+const nameFilter = ref('')
+const statusFilter = ref<string>('all')
+const excusedNotes = ref<Record<string, string>>({})
+const showExcusedModal = ref(false)
+const currentExcusedPlayer = ref<string | null>(null)
 
 const eventId = route.params.id as string
+
+// Computed properties for filtering and sorting
+const filteredAttendance = computed(() => {
+  let filtered = attendance.value.filter(record => {
+    const player = record.playerId as PlayerDoc
+    const nameMatch = !nameFilter.value || 
+      `${player.firstName} ${player.lastName}`.toLowerCase().includes(nameFilter.value.toLowerCase())
+    
+    const statusMatch = statusFilter.value === 'all' || record.status === statusFilter.value
+    
+    return nameMatch && statusMatch
+  })
+
+  // Sort by status: pending first, then by player name
+  return filtered.sort((a, b) => {
+    const statusOrder = { pending: 0, attending: 1, declined: 2, attended: 3, excused: 4 }
+    const statusDiff = statusOrder[a.status] - statusOrder[b.status]
+    
+    if (statusDiff !== 0) return statusDiff
+    
+    const playerA = a.playerId as PlayerDoc
+    const playerB = b.playerId as PlayerDoc
+    return `${playerA.firstName} ${playerA.lastName}`.localeCompare(`${playerB.firstName} ${playerB.lastName}`)
+  })
+})
+
+const attendanceSummary = computed(() => {
+  const summary = {
+    total: attendance.value.length,
+    pending: 0,
+    attending: 0,
+    declined: 0,
+    attended: 0,
+    excused: 0
+  }
+  
+  attendance.value.forEach(record => {
+    summary[record.status]++
+  })
+  
+  return summary
+})
 
 async function loadEvent() {
   try {
@@ -52,20 +115,113 @@ async function loadEvent() {
   }
 }
 
-async function loadPlayers() {
+async function loadAttendance() {
   if (!auth.user || !['admin', 'trainer'].includes(auth.user.role)) {
+    console.log('User not authorized for attendance:', auth.user?.role)
     return
   }
   
-  playersLoading.value = true
+  attendanceLoading.value = true
   try {
-    const data = await request<{ docs: PlayerDoc[] }>(`/api/users?where[role][equals]=player&where[active][equals]=true&limit=100&sort=firstName`)
-    players.value = data.docs
+    console.log('Loading attendance for event:', eventId)
+    console.log('Auth token:', auth.token)
+    const data = await request<AttendanceResponse>(`/api/events/${eventId}/attendance`)
+    console.log('Attendance data received:', data)
+    attendance.value = data.docs
   } catch (e) {
-    console.error('Failed to load players:', e)
+    console.error('Failed to load attendance:', e)
+    error.value = 'Failed to load attendance: ' + (e instanceof Error ? e.message : 'Unknown error')
   } finally {
-    playersLoading.value = false
+    attendanceLoading.value = false
   }
+}
+
+async function updateAttendance(playerId: string, status: string, notes?: string) {
+  if (!auth.user || !['admin', 'trainer'].includes(auth.user.role)) {
+    return
+  }
+
+  try {
+    await request(`/api/events/${eventId}/attendance`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        playerId,
+        status,
+        notes: notes || ''
+      })
+    })
+
+    // Update local attendance record
+    const recordIndex = attendance.value.findIndex(
+      record => (record.playerId as PlayerDoc).id === playerId
+    )
+    
+    if (recordIndex !== -1 && attendance.value[recordIndex]) {
+      attendance.value[recordIndex].status = status as any
+      attendance.value[recordIndex].notes = notes || ''
+      attendance.value[recordIndex].updatedAt = new Date().toISOString()
+    }
+
+    // Show success notification
+    // You can add a toast notification here
+    
+  } catch (e) {
+    console.error('Failed to update attendance:', e)
+    alert('Failed to update attendance: ' + (e instanceof Error ? e.message : 'Unknown error'))
+  }
+}
+
+function handleAttendedClick(playerId: string) {
+  updateAttendance(playerId, 'attended')
+}
+
+function handleDeclinedClick(playerId: string) {
+  updateAttendance(playerId, 'declined')
+}
+
+function handleExcusedClick(playerId: string) {
+  currentExcusedPlayer.value = playerId
+  showExcusedModal.value = true
+}
+
+function submitExcused() {
+  if (currentExcusedPlayer.value) {
+    const notes = excusedNotes.value[currentExcusedPlayer.value] || ''
+    updateAttendance(currentExcusedPlayer.value, 'excused', notes)
+    showExcusedModal.value = false
+    excusedNotes.value[currentExcusedPlayer.value] = ''
+    currentExcusedPlayer.value = null
+  }
+}
+
+function cancelExcused() {
+  showExcusedModal.value = false
+  currentExcusedPlayer.value = null
+  if (currentExcusedPlayer.value) {
+    excusedNotes.value[currentExcusedPlayer.value] = ''
+  }
+}
+
+function getStatusColor(status: string) {
+  const colors: Record<string, string> = {
+    pending: 'gray',
+    attending: 'blue',
+    declined: 'red',
+    attended: 'green',
+    excused: 'yellow'
+  }
+  return colors[status] || 'gray'
+}
+
+function getStatusIcon(status: string) {
+  const icons: Record<string, string> = {
+    pending: 'i-heroicons-clock',
+    attending: 'i-heroicons-check-circle',
+    declined: 'i-heroicons-x-circle',
+    attended: 'i-heroicons-check-circle',
+    excused: 'i-heroicons-exclamation-triangle'
+  }
+  return icons[status] || 'i-heroicons-question-mark-circle'
 }
 
 function formatDate(dateString: string): string {
@@ -77,6 +233,37 @@ function formatDate(dateString: string): string {
     hour: 'numeric',
     minute: '2-digit'
   })
+}
+
+async function testConnection() {
+  try {
+    console.log('Testing API connection...')
+    
+    // First try a simple health check without auth
+    console.log('Testing health endpoint...')
+    const healthResponse = await fetch('http://localhost:3000/api/health')
+    const healthData = await healthResponse.json()
+    console.log('Health check response:', healthData)
+    
+    if (!healthResponse.ok) {
+      throw new Error(`Health check failed: ${healthData.message}`)
+    }
+    
+    // Then try the basic attendance collection with auth
+    console.log('Testing basic attendance API with auth...')
+    const basicAttendance = await request('/api/attendance?limit=5')
+    console.log('Basic attendance response:', basicAttendance)
+    
+    // Then try our custom endpoint
+    console.log('Testing custom debug API...')
+    const debugData = await request('/api/debug/attendance')
+    console.log('Debug data:', debugData)
+    
+    alert('Connection successful! Check console for details.')
+  } catch (e) {
+    console.error('Connection test failed:', e)
+    alert('Connection failed: ' + (e instanceof Error ? e.message : 'Unknown error'))
+  }
 }
 
 function calculateAge(dateOfBirth: string): number {
@@ -92,10 +279,54 @@ function calculateAge(dateOfBirth: string): number {
   return age
 }
 
+async function lockEvent() {
+  if (!event.value) return
+  
+  lockLoading.value = true
+  try {
+    const response = await request<{ success: boolean; message: string; event: EventDoc }>(`/api/events/${eventId}/lock`, {
+      method: 'POST'
+    })
+    
+    // Update local event state
+    event.value.locked = true
+    
+    // Show success message
+    console.log('Event locked successfully:', response.message)
+  } catch (e) {
+    console.error('Failed to lock event:', e)
+    error.value = 'Failed to lock event: ' + (e instanceof Error ? e.message : 'Unknown error')
+  } finally {
+    lockLoading.value = false
+  }
+}
+
+async function unlockEvent() {
+  if (!event.value) return
+  
+  lockLoading.value = true
+  try {
+    const response = await request<{ success: boolean; message: string; event: EventDoc }>(`/api/events/${eventId}/lock`, {
+      method: 'DELETE'
+    })
+    
+    // Update local event state
+    event.value.locked = false
+    
+    // Show success message
+    console.log('Event unlocked successfully:', response.message)
+  } catch (e) {
+    console.error('Failed to unlock event:', e)
+    error.value = 'Failed to unlock event: ' + (e instanceof Error ? e.message : 'Unknown error')
+  } finally {
+    lockLoading.value = false
+  }
+}
+
 onMounted(async () => {
   await loadEvent()
   if (auth.user && ['admin', 'trainer'].includes(auth.user.role)) {
-    await loadPlayers()
+    await loadAttendance()
   }
 })
 
@@ -187,84 +418,271 @@ useHead({
         <p class="text-gray-700 whitespace-pre-wrap">{{ event.description }}</p>
       </UCard>
 
-      <!-- Players section (only for trainers/admins) -->
-      <div v-if="auth.user && ['admin', 'trainer'].includes(auth.user.role)" class="space-y-4">
-        <div class="flex items-center justify-between">
-          <h3 class="text-lg font-medium">Team Players</h3>
-          <UButton 
-            icon="i-heroicons-user-plus" 
-            size="sm" 
-            variant="outline"
-            to="/players/create"
-          >
-            Add New Player
-          </UButton>
-        </div>
-
-        <UCard>
-          <div v-if="playersLoading" class="flex justify-center py-6">
-            <ULoader size="sm" />
-          </div>
-          
-          <div v-else-if="players.length === 0" class="text-center py-6 text-gray-500">
-            No players found. Add some players to get started.
-          </div>
-
-          <div v-else class="space-y-3">
-            <div 
-              v-for="player in players" 
-              :key="player.id"
-              class="flex items-center justify-between p-3 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer transition-colors"
-              @click="navigateTo(`/players/${player.id}`)"
-            >
-              <div class="flex items-center gap-3">
-                <PlayerAvatar 
-                  :first-name="player.firstName"
-                  :last-name="player.lastName"
-                  :photo="player.photo"
-                  size="md"
-                />
-                <div>
-                  <p class="font-medium">{{ player.firstName }} {{ player.lastName }}</p>
-                  <p class="text-sm text-gray-500">
-                    {{ player.email }}
-                    <span v-if="player.dateOfBirth">
-                      • Age {{ calculateAge(player.dateOfBirth) }}
-                    </span>
-                  </p>
-                </div>
-              </div>
-              
-              <!-- Actions -->
-              <div class="flex items-center gap-2" @click.stop>
-                <UButton 
-                  size="xs" 
-                  variant="ghost" 
-                  icon="i-heroicons-user"
-                  @click="navigateTo(`/players/${player.id}`)"
+        <!-- Event Actions (only for trainers/admins) -->
+        <UCard v-if="auth.user && ['admin', 'trainer'].includes(auth.user.role)" class="mb-6">
+          <template #header>
+            <div class="flex items-center justify-between">
+              <h3 class="text-lg font-medium">Event Management</h3>
+              <div class="flex items-center gap-2">
+                <UButton
+                  v-if="!event.locked"
+                  @click="lockEvent"
+                  :loading="lockLoading"
+                  color="orange"
+                  variant="solid"
+                  size="sm"
+                  icon="i-heroicons-lock-closed"
                 >
-                  View Profile
+                  Lock Event
                 </UButton>
-                <UButton 
-                  size="xs" 
-                  variant="outline"
-                  disabled
+                <UButton
+                  v-else-if="auth.user.role === 'admin'"
+                  @click="unlockEvent"
+                  :loading="lockLoading"
+                  color="green"
+                  variant="solid"
+                  size="sm"
+                  icon="i-heroicons-lock-open"
                 >
-                  Register
+                  Unlock Event
                 </UButton>
+                <UBadge v-else color="gray" variant="soft">
+                  Event Locked
+                </UBadge>
               </div>
+            </div>
+          </template>
+          <div class="space-y-2">
+            <div v-if="!event.locked" class="text-sm text-gray-600">
+              <UIcon name="i-heroicons-information-circle" class="inline w-4 h-4 mr-1" />
+              Locking this event will prevent further registrations and attendance changes.
+            </div>
+            <div v-else class="text-sm text-gray-600">
+              <UIcon name="i-heroicons-shield-check" class="inline w-4 h-4 mr-1" />
+              This event is locked. Only administrators can make changes.
             </div>
           </div>
         </UCard>
 
-        <!-- Placeholder for future attendance marking -->
+        <!-- Attendance Management (only for trainers/admins) -->
+      <div v-if="auth.user && ['admin', 'trainer'].includes(auth.user.role)" class="space-y-6">
+        <!-- Debug Info -->
         <UAlert 
-          color="blue" 
+          v-if="error" 
+          color="red" 
           variant="subtle" 
-          title="Coming Next" 
-          description="Player registration and attendance marking features will be added in the next step."
+          :title="'Attendance Error'" 
+          :description="error"
         />
+        
+        <!-- Attendance Header with Summary -->
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h3 class="text-lg font-medium">Attendance Management</h3>
+            <p class="text-sm text-gray-500">Mark player attendance for this event</p>
+            <UButton 
+              v-if="(attendance.length === 0 && !attendanceLoading) || error" 
+              size="xs" 
+              variant="outline" 
+              @click="testConnection"
+            >
+              Debug Connection
+            </UButton>
+          </div>          <!-- Attendance Summary -->
+          <div class="flex items-center gap-4 text-sm">
+            <div class="flex items-center gap-1">
+              <div class="w-2 h-2 bg-green-500 rounded-full"></div>
+              <span>Attended: {{ attendanceSummary.attended }}</span>
+            </div>
+            <div class="flex items-center gap-1">
+              <div class="w-2 h-2 bg-red-500 rounded-full"></div>
+              <span>Declined: {{ attendanceSummary.declined }}</span>
+            </div>
+            <div class="flex items-center gap-1">
+              <div class="w-2 h-2 bg-yellow-500 rounded-full"></div>
+              <span>Excused: {{ attendanceSummary.excused }}</span>
+            </div>
+            <div class="flex items-center gap-1">
+              <div class="w-2 h-2 bg-gray-400 rounded-full"></div>
+              <span>Pending: {{ attendanceSummary.pending }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Filters -->
+        <UCard>
+          <div class="flex flex-col sm:flex-row gap-4">
+            <!-- Name Filter -->
+            <div class="flex-1">
+              <UInput
+                v-model="nameFilter"
+                icon="i-heroicons-magnifying-glass"
+                placeholder="Filter by player name..."
+                size="sm"
+              />
+            </div>
+            
+            <!-- Status Filter -->
+            <div class="w-full sm:w-48">
+              <USelect
+                v-model="statusFilter"
+                :options="[
+                  { label: 'All Statuses', value: 'all' },
+                  { label: 'Pending', value: 'pending' },
+                  { label: 'Attending', value: 'attending' },
+                  { label: 'Declined', value: 'declined' },
+                  { label: 'Attended', value: 'attended' },
+                  { label: 'Excused', value: 'excused' }
+                ]"
+                size="sm"
+              />
+            </div>
+          </div>
+        </UCard>
+
+        <!-- Attendance List -->
+        <UCard>
+          <div v-if="attendanceLoading" class="flex justify-center py-8">
+            <ULoader size="sm" />
+          </div>
+          
+          <div v-else-if="attendance.length === 0" class="text-center py-8 text-gray-500">
+            <p class="mb-4">No attendance records found for this event.</p>
+            <div class="text-sm">
+              <p>Possible reasons:</p>
+              <ul class="mt-2 space-y-1">
+                <li>• No players have been created yet</li>
+                <li>• Event was created before the attendance system was implemented</li>
+                <li>• Backend attendance records need to be generated</li>
+              </ul>
+            </div>
+            <UButton 
+              class="mt-4"
+              size="sm" 
+              variant="outline" 
+              @click="testConnection"
+            >
+              Test Backend Connection
+            </UButton>
+          </div>
+
+          <div v-else-if="filteredAttendance.length === 0" class="text-center py-8 text-gray-500">
+            No players match the current filters.
+          </div>
+
+          <div v-else class="space-y-3">
+            <div 
+              v-for="record in filteredAttendance" 
+              :key="record.id"
+              class="flex items-center justify-between p-4 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
+            >
+              <!-- Player Info -->
+              <div class="flex items-center gap-3">
+                <PlayerAvatar 
+                  :first-name="(record.playerId as PlayerDoc).firstName"
+                  :last-name="(record.playerId as PlayerDoc).lastName"
+                  :photo="(record.playerId as PlayerDoc).photo"
+                  size="lg"
+                />
+                <div>
+                  <p class="font-medium">
+                    {{ (record.playerId as PlayerDoc).firstName }} {{ (record.playerId as PlayerDoc).lastName }}
+                  </p>
+                  <div class="flex items-center gap-2 mt-1">
+                    <UBadge
+                      :color="getStatusColor(record.status) as any"
+                      :icon="getStatusIcon(record.status)"
+                      variant="subtle"
+                    >
+                      {{ record.status.charAt(0).toUpperCase() + record.status.slice(1) }}
+                    </UBadge>
+                    <span v-if="record.notes" class="text-xs text-gray-500">
+                      • {{ record.notes }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Action Buttons -->
+              <div class="flex items-center gap-2" v-if="!event.locked || auth.user?.role === 'admin'">
+                <!-- Attended Button -->
+                <UButton 
+                  size="sm"
+                  :color="record.status === 'attended' ? 'green' : 'gray'"
+                  :variant="record.status === 'attended' ? 'solid' : 'outline'"
+                  icon="i-heroicons-check"
+                  @click="handleAttendedClick((record.playerId as PlayerDoc).id)"
+                >
+                  OK
+                </UButton>
+                
+                <!-- Declined Button -->
+                <UButton 
+                  size="sm"
+                  :color="record.status === 'declined' ? 'red' : 'gray'"
+                  :variant="record.status === 'declined' ? 'solid' : 'outline'"
+                  icon="i-heroicons-x-mark"
+                  @click="handleDeclinedClick((record.playerId as PlayerDoc).id)"
+                >
+                  NO
+                </UButton>
+                
+                <!-- Excused Button -->
+                <UButton 
+                  size="sm"
+                  :color="record.status === 'excused' ? 'yellow' : 'gray'"
+                  :variant="record.status === 'excused' ? 'solid' : 'outline'"
+                  icon="i-heroicons-exclamation-triangle"
+                  @click="handleExcusedClick((record.playerId as PlayerDoc).id)"
+                >
+                  Excused
+                </UButton>
+              </div>
+
+              <!-- Locked Message -->
+              <div v-else class="text-sm text-gray-500">
+                Event is locked
+              </div>
+            </div>
+          </div>
+        </UCard>
       </div>
     </div>
+
+    <!-- Excused Modal -->
+    <UModal v-model="showExcusedModal">
+      <div class="p-6">
+        <h3 class="text-lg font-medium mb-4">Mark as Excused</h3>
+        
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">
+              Reason for excused absence (required):
+            </label>
+            <UTextarea
+              v-model="excusedNotes[currentExcusedPlayer || '']"
+              placeholder="Enter reason for excused absence..."
+              :rows="3"
+            />
+          </div>
+          
+          <div class="flex justify-end gap-3">
+            <UButton
+              variant="ghost"
+              @click="cancelExcused"
+            >
+              Cancel
+            </UButton>
+            <UButton
+              color="yellow"
+              :disabled="!excusedNotes[currentExcusedPlayer || '']?.trim()"
+              @click="submitExcused"
+            >
+              Mark as Excused
+            </UButton>
+          </div>
+        </div>
+      </div>
+    </UModal>
   </div>
 </template>

@@ -8,11 +8,6 @@ export default defineNuxtConfig({
     host: '0.0.0.0'
   },
   modules: ['@pinia/nuxt', '@nuxt/ui'],
-  // @ts-ignore - module augmentation for @nuxt/ui may not be picked up in this context
-  ui: {
-    global: true,
-    icons: 'all'
-  },
   imports: {
     dirs: []
   },

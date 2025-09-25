@@ -29,22 +29,13 @@ async function load() {
   }
 }
 
-function logout() {
-  auth.clear()
-}
-
 onMounted(load)
 </script>
 
 <template>
-  <div class="py-6 space-y-6">
+  <div class="space-y-6">
     <div class="flex items-center justify-between">
-      <h1 class="text-xl font-semibold">Events</h1>
-      <div v-if="auth.user" class="flex items-center gap-3 text-sm">
-        <span class="text-gray-600">{{ auth.user.firstName || auth.user.email }} ({{ auth.user.role }})</span>
-        <UButton size="xs" color="gray" variant="soft" @click="logout">Logout</UButton>
-      </div>
-      <UButton v-else size="xs" to="/auth/login">Login</UButton>
+      <h1 class="text-2xl font-bold text-gray-900">Events</h1>
     </div>
 
     <!-- Action buttons for trainers and admins -->
