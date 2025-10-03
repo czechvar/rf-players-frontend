@@ -1,109 +1,238 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import { useApi } from '../composables/useApi'
 
-interface EventDoc {
-  id: string
-  name: string
-  date: string
-  type: string
-  location?: string
-  locked?: boolean
-}
-
-const { request } = useApi()
-const events = ref<EventDoc[]>([])
-const error = ref<string>('')
-const loading = ref<boolean>(true)
 const auth = useAuthStore()
+const { request } = useApi()
 
-async function load() {
+const email = ref('')
+const password = ref('')
+const error = ref('')
+const loading = ref(false)
+
+// Create a computed property to check if user is logged in
+const isLoggedIn = computed(() => {
+  return !!(auth.user && auth.token)
+})
+
+// Remove the automatic redirect since we want to show dashboard content
+onMounted(() => {
+  // Comment out the auto-redirect to allow showing dashboard
+  // if (auth.isLoggedIn) {
+  //   navigateTo('/events')
+  // }
+})
+
+async function login() {
+  error.value = ''
+  loading.value = true
   try {
-    const data = await request<{ docs: EventDoc[] }>(`/api/events?limit=25&sort=-date`)
-    events.value = data.docs
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to load events'
+    const data = await request<{ token: string; user: any }>('/api/users/login', {
+      method: 'POST',
+      body: JSON.stringify({ email: email.value, password: password.value })
+    })
+    ;(auth as any).setSession(data.token, data.user)
+    
+    // Force reactivity update by waiting a tick
+    await nextTick()
+    
+    // Redirect to events page after successful login
+    await navigateTo('/events')
+  } catch (e: any) {
+    error.value = e.message
   } finally {
     loading.value = false
   }
 }
-
-onMounted(load)
 </script>
 
 <template>
-  <div class="space-y-6">
-    <div class="flex items-center justify-between">
-      <h1 class="text-2xl font-bold text-gray-900">Events</h1>
-    </div>
+  <!-- Show welcome dashboard if logged in -->
+  <div v-if="isLoggedIn" class="min-h-screen bg-gray-50">
+    <div class="max-w-4xl mx-auto py-12 px-4">
+      <!-- Welcome Header -->
+      <div class="text-center mb-12">
+        <h1 class="text-4xl font-bold text-gray-900 mb-4">
+          Welcome back, {{ auth.user?.firstName || auth.user?.email }}!
+        </h1>
+        <p class="text-lg text-gray-600">
+          Manage your soccer team activities from your dashboard
+        </p>
+        <UBadge 
+          :label="auth.user?.role?.toUpperCase()" 
+          size="lg" 
+          variant="subtle"
+          class="mt-4"
+        />
+      </div>
 
-    <!-- Action buttons for trainers and admins -->
-    <div v-if="auth.user && ['admin', 'trainer'].includes(auth.user.role)" class="flex flex-wrap gap-3">
-      <UButton 
-        icon="i-heroicons-plus" 
-        to="/events/create"
-        variant="solid"
-      >
-        Create Event
-      </UButton>
-      <UButton 
-        icon="i-heroicons-users" 
-        to="/players"
-        variant="outline"
-      >
-        View Players
-      </UButton>
-      <UButton 
-        icon="i-heroicons-user-plus" 
-        to="/players/create"
-        variant="ghost"
-      >
-        Register Player
-      </UButton>
-    </div>
+      <!-- Quick Actions Grid -->
+      <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+        <!-- Events Card -->
+        <UCard class="hover:shadow-lg transition-shadow cursor-pointer" @click="navigateTo('/events')">
+          <template #header>
+            <div class="flex items-center gap-3">
+              <UIcon name="i-heroicons-calendar-days" class="w-8 h-8 text-blue-500" />
+              <h3 class="text-xl font-semibold">Events</h3>
+            </div>
+          </template>
+          <p class="text-gray-600 mb-4">
+            View upcoming trainings, matches, and tournaments
+          </p>
+          <UButton to="/events" variant="outline" block>
+            View All Events
+          </UButton>
+        </UCard>
 
-    <div v-if="loading" class="flex justify-center py-10">
-      <ULoader />
-    </div>
-    <UAlert v-else-if="error" color="red" variant="subtle" :title="'Error'" :description="error" />
-    <div v-else>
-      <UEmptyState v-if="events.length === 0" icon="i-heroicons-calendar" title="No events" description="Events will appear here once created." />
-      <div v-else class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <!-- Players Card (Admin/Trainer only) -->
         <UCard 
-          v-for="e in events" 
-          :key="e.id" 
-          :ui="{ body: { padding: 'p-4' } }"
-          class="cursor-pointer hover:shadow-md transition-shadow"
-          @click="navigateTo(`/events/${e.id}`)"
+          v-if="['admin', 'trainer'].includes(auth.user?.role)" 
+          class="hover:shadow-lg transition-shadow cursor-pointer" 
+          @click="navigateTo('/players')"
         >
           <template #header>
-            <div class="flex items-start justify-between">
-              <div>
-                <p class="font-medium leading-tight">{{ e.name }}</p>
-                <p class="text-xs text-gray-500">{{ new Date(e.date).toLocaleString() }}</p>
-              </div>
-              <UBadge v-if="e.locked" size="xs" color="gray" variant="soft">Locked</UBadge>
+            <div class="flex items-center gap-3">
+              <UIcon name="i-heroicons-users" class="w-8 h-8 text-green-500" />
+              <h3 class="text-xl font-semibold">Players</h3>
             </div>
           </template>
-          <div class="space-y-2 text-xs">
-            <div class="flex items-center gap-2">
-              <UIcon name="i-heroicons-tag" class="w-4 h-4" />
-              <span class="capitalize">{{ e.type }}</span>
-            </div>
-            <div v-if="e.location" class="flex items-center gap-2">
-              <UIcon name="i-heroicons-map-pin" class="w-4 h-4" />
-              <span>{{ e.location }}</span>
-            </div>
-          </div>
-          <template #footer>
-            <div class="flex justify-end">
-              <UButton size="xs" variant="ghost" icon="i-heroicons-arrow-right">
-                View Details
-              </UButton>
-            </div>
-          </template>
+          <p class="text-gray-600 mb-4">
+            Manage player profiles and registrations
+          </p>
+          <UButton to="/players" variant="outline" block>
+            View All Players
+          </UButton>
         </UCard>
+
+        <!-- Create Event Card (Admin/Trainer only) -->
+        <UCard 
+          v-if="['admin', 'trainer'].includes(auth.user?.role)" 
+          class="hover:shadow-lg transition-shadow cursor-pointer border-dashed border-2 border-gray-300"
+          @click="navigateTo('/events/create')"
+        >
+          <template #header>
+            <div class="flex items-center gap-3">
+              <UIcon name="i-heroicons-plus-circle" class="w-8 h-8 text-purple-500" />
+              <h3 class="text-xl font-semibold">Create Event</h3>
+            </div>
+          </template>
+          <p class="text-gray-600 mb-4">
+            Schedule a new training session or match
+          </p>
+          <UButton to="/events/create" variant="solid" block>
+            Create New Event
+          </UButton>
+        </UCard>
+
+        <!-- Create Player Card (Admin/Trainer only) -->
+        <UCard 
+          v-if="['admin', 'trainer'].includes(auth.user?.role)" 
+          class="hover:shadow-lg transition-shadow cursor-pointer border-dashed border-2 border-gray-300"
+          @click="navigateTo('/players/create')"
+        >
+          <template #header>
+            <div class="flex items-center gap-3">
+              <UIcon name="i-heroicons-user-plus" class="w-8 h-8 text-orange-500" />
+              <h3 class="text-xl font-semibold">Create Player</h3>
+            </div>
+          </template>
+          <p class="text-gray-600 mb-4">
+            Register a new player to the team
+          </p>
+          <UButton to="/players/create" variant="solid" block>
+            Register Player
+          </UButton>
+        </UCard>
+
+        <!-- My Attendance Card (Player/Parent) -->
+        <UCard 
+          v-if="['player', 'parent'].includes(auth.user?.role)" 
+          class="hover:shadow-lg transition-shadow"
+        >
+          <template #header>
+            <div class="flex items-center gap-3">
+              <UIcon name="i-heroicons-check-circle" class="w-8 h-8 text-emerald-500" />
+              <h3 class="text-xl font-semibold">My Attendance</h3>
+            </div>
+          </template>
+          <p class="text-gray-600 mb-4">
+            Track your attendance history and stats
+          </p>
+          <UButton variant="outline" block>
+            View Attendance
+          </UButton>
+        </UCard>
+      </div>
+
+      <!-- Quick Stats (Admin/Trainer) -->
+      <div v-if="['admin', 'trainer'].includes(auth.user?.role)" class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-2xl font-semibold mb-6">Quick Overview</h2>
+        <div class="grid md:grid-cols-3 gap-6">
+          <div class="text-center">
+            <div class="text-3xl font-bold text-blue-600">12</div>
+            <div class="text-gray-600">Upcoming Events</div>
+          </div>
+          <div class="text-center">
+            <div class="text-3xl font-bold text-green-600">45</div>
+            <div class="text-gray-600">Active Players</div>
+          </div>
+          <div class="text-center">
+            <div class="text-3xl font-bold text-purple-600">89%</div>
+            <div class="text-gray-600">Avg Attendance</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Show login form if not authenticated -->
+  <div v-else class="min-h-screen flex items-center justify-center bg-gray-50">
+    <div class="max-w-md w-full space-y-8 p-8">
+      <div class="text-center space-y-4">
+        <h1 class="text-3xl font-bold text-gray-900">RF Players</h1>
+        <p class="text-sm text-gray-600">Sign in to access your dashboard</p>
+      </div>
+      
+      <UAlert v-if="error" color="red" variant="subtle" :title="'Login failed'" :description="error" />
+      
+      <UForm :state="{}" @submit.prevent="login" class="space-y-6">
+        <UFormGroup label="Email Address">
+          <UInput 
+            v-model="email" 
+            type="email" 
+            placeholder="Enter your email"
+            required 
+            size="lg"
+          />
+        </UFormGroup>
+        
+        <UFormGroup label="Password">
+          <UInput 
+            v-model="password" 
+            type="password" 
+            placeholder="Enter your password"
+            required 
+            size="lg"
+          />
+        </UFormGroup>
+        
+        <UButton 
+          type="submit" 
+          block 
+          size="lg"
+          :loading="loading"
+          :disabled="!email || !password"
+        >
+          Sign In
+        </UButton>
+      </UForm>
+      
+      <div class="text-center space-y-2">
+        <p class="text-sm text-gray-600">Need an account?</p>
+        <UButton to="/auth/register" variant="link" size="sm">
+          Contact your administrator
+        </UButton>
       </div>
     </div>
   </div>

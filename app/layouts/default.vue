@@ -13,9 +13,9 @@
           <!-- Navigation -->
           <nav v-if="auth.user" class="hidden md:flex space-x-8">
             <NuxtLink 
-              to="/" 
+              to="/events" 
               class="text-gray-900 hover:text-primary-600 px-3 py-2 text-sm font-medium"
-              :class="{ 'text-primary-600 border-b-2 border-primary-600': route.path === '/' }"
+              :class="{ 'text-primary-600 border-b-2 border-primary-600': route.path === '/events' || route.path.startsWith('/events') }"
             >
               Events
             </NuxtLink>
@@ -102,6 +102,6 @@ const auth = useAuthStore()
 
 async function logout() {
   auth.clear()
-  await navigateTo('/auth/login')
+  await navigateTo('/')
 }
 </script>

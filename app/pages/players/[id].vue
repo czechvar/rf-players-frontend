@@ -366,7 +366,7 @@ useHead({
                 <UInput v-model="editForm.email" type="email" :disabled="saving" />
               </UFormGroup>
               
-              <UFormGroup label="Date of Birth" hint="Player must be 6-12 years old">
+              <UFormGroup label="Date of Birth">
                 <UInput v-model="editForm.dateOfBirth" type="date" :disabled="saving" />
               </UFormGroup>
               

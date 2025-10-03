@@ -124,15 +124,70 @@ async function loadAttendance() {
   attendanceLoading.value = true
   try {
     console.log('Loading attendance for event:', eventId)
-    console.log('Auth token:', auth.token)
+    
+    // Try to load existing attendance records
     const data = await request<AttendanceResponse>(`/api/events/${eventId}/attendance`)
     console.log('Attendance data received:', data)
     attendance.value = data.docs
+    
+    // If no attendance records found, try to generate them for existing players
+    if (data.docs.length === 0) {
+      console.log('No attendance records found, attempting to generate for existing players')
+      await generateAttendanceForExistingPlayers()
+    }
+    
   } catch (e) {
     console.error('Failed to load attendance:', e)
-    error.value = 'Failed to load attendance: ' + (e instanceof Error ? e.message : 'Unknown error')
+    
+    // If the custom endpoint fails, try the standard attendance endpoint
+    try {
+      const fallbackData = await request<AttendanceResponse>(`/api/attendance?where[eventId][equals]=${eventId}&depth=2&limit=100`)
+      console.log('Fallback attendance data:', fallbackData)
+      attendance.value = fallbackData.docs
+    } catch (fallbackError) {
+      console.error('Fallback attendance request also failed:', fallbackError)
+      error.value = 'Failed to load attendance: ' + (e instanceof Error ? e.message : 'Unknown error')
+    }
   } finally {
     attendanceLoading.value = false
+  }
+}
+
+async function generateAttendanceForExistingPlayers() {
+  try {
+    // Get all active players
+    const playersData = await request<{ docs: any[] }>('/api/users?where[role][equals]=player&where[active][equals]=true&limit=100')
+    
+    if (playersData.docs && playersData.docs.length > 0) {
+      console.log(`Generating attendance records for ${playersData.docs.length} existing players`)
+      
+      // Create attendance records for each player
+      const attendancePromises = playersData.docs.map(player => 
+        request('/api/attendance', {
+          method: 'POST',
+          body: JSON.stringify({
+            eventId: eventId,
+            playerId: player.id,
+            status: 'pending',
+            notes: 'Auto-generated for existing player',
+            updatedBy: auth.user?.id
+          })
+        }).catch(err => {
+          console.error(`Failed to create attendance for player ${player.firstName} ${player.lastName}:`, err)
+          return null
+        })
+      )
+      
+      const results = await Promise.allSettled(attendancePromises)
+      
+      // Reload attendance after generation
+      const newData = await request<AttendanceResponse>(`/api/events/${eventId}/attendance`)
+      attendance.value = newData.docs
+      
+      console.log('Attendance records generated and reloaded')
+    }
+  } catch (e) {
+    console.error('Failed to generate attendance for existing players:', e)
   }
 }
 
