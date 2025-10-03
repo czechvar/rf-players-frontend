@@ -40,6 +40,7 @@ const loading = ref(true)
 const error = ref('')
 const saving = ref(false)
 const isEditing = ref(false)
+const uploadingPhoto = ref(false)
 
 // Form data for editing
 const editForm = ref({
@@ -178,6 +179,154 @@ async function savePlayer() {
     }
   } finally {
     saving.value = false
+  }
+}
+
+async function uploadPhoto(file: File) {
+  if (!player.value) return
+
+  uploadingPhoto.value = true
+  error.value = ''
+
+  try {
+    // Create FormData for file upload
+    const formData = new FormData()
+    formData.append('file', file)
+
+    // Get auth token from the auth store or cookie
+    const token = useCookie('payload-token')
+    
+    if (!token.value) {
+      throw new Error('Authentication required. Please log in again.')
+    }
+
+    // Use the request composable which handles auth properly
+    const uploadResponse = await $fetch<{ doc: { id: string, url: string, filename: string } }>('/api/media', {
+      method: 'POST',
+      body: formData,
+      baseURL: useRuntimeConfig().public.apiBase,
+      headers: {
+        'Authorization': `JWT ${token.value}`
+      },
+      // Don't set Content-Type for FormData, let browser handle it
+      onResponseError({ response }) {
+        console.error('Upload response error:', response)
+        throw new Error(`Upload failed: ${response.status} ${response.statusText}`)
+      }
+    })
+
+    // Update player with new photo using the existing request method
+    const updateData = {
+      photo: uploadResponse.doc.id
+    }
+
+    await request<PlayerDoc>(`/api/users/${playerId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(updateData)
+    })
+
+    // Reload player data to get updated photo
+    await loadPlayer()
+
+    // Show success message
+    const successToast = useToast()
+    successToast.add({
+      title: 'Success',
+      description: 'Profile photo updated successfully',
+      color: 'green'
+    })
+
+  } catch (e) {
+    console.error('Photo upload error:', e)
+    
+    // Handle specific error cases
+    if (e instanceof Error) {
+      const errorMessage = e.message.toLowerCase()
+      
+      if (errorMessage.includes('403') || errorMessage.includes('forbidden')) {
+        error.value = 'Access denied. You may not have permission to upload photos or your session has expired. Please refresh the page and try again.'
+      } else if (errorMessage.includes('401') || errorMessage.includes('unauthorized')) {
+        error.value = 'Authentication expired. Please refresh the page and log in again.'
+      } else if (errorMessage.includes('413') || errorMessage.includes('too large')) {
+        error.value = 'File is too large. Please choose a smaller image (max 2MB).'
+      } else if (errorMessage.includes('415') || errorMessage.includes('unsupported')) {
+        error.value = 'Unsupported file type. Please upload a JPEG, PNG, or WebP image.'
+      } else if (errorMessage.includes('400')) {
+        error.value = 'Invalid file format or corrupted file. Please try a different image.'
+      } else if (errorMessage.includes('cors')) {
+        error.value = 'Network error. Please check your connection and try again.'
+      } else {
+        error.value = `Upload failed: ${e.message}`
+      }
+    } else {
+      error.value = 'Failed to upload photo. Please try again.'
+    }
+  } finally {
+    uploadingPhoto.value = false
+  }
+}
+
+function handlePhotoUpload(event: Event) {
+  const target = event.target as HTMLInputElement
+  const file = target.files?.[0]
+  
+  if (!file) return
+
+  // Reset the input value so the same file can be selected again
+  target.value = ''
+
+  // Validate file type
+  const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
+  if (!allowedTypes.includes(file.type)) {
+    error.value = 'Please upload a JPEG, PNG, or WebP image.'
+    return
+  }
+
+  // Validate file size (2MB max to be safe)
+  const maxSize = 2 * 1024 * 1024 // 2MB in bytes
+  if (file.size > maxSize) {
+    error.value = 'File is too large. Please choose an image smaller than 2MB.'
+    return
+  }
+
+  // Clear any previous errors
+  error.value = ''
+  
+  uploadPhoto(file)
+}
+
+async function removePhoto() {
+  if (!player.value?.photo) return
+
+  uploadingPhoto.value = true
+  error.value = ''
+
+  try {
+    // Remove photo reference from player
+    const updateData = {
+      photo: null
+    }
+
+    await request<PlayerDoc>(`/api/users/${playerId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(updateData)
+    })
+
+    // Reload player data
+    await loadPlayer()
+
+    // Show success message
+    const successToast = useToast()
+    successToast.add({
+      title: 'Success',
+      description: 'Profile photo removed successfully',
+      color: 'green'
+    })
+
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Failed to remove photo'
+  } finally {
+    uploadingPhoto.value = false
   }
 }
 
@@ -461,10 +610,46 @@ useHead({
                 />
               </div>
               
-              <UButton size="sm" variant="outline" disabled>
-                Upload Photo
-              </UButton>
-              <p class="text-xs text-gray-500 mt-2">Photo upload coming soon</p>
+              <div class="space-y-2">
+                <!-- File input for photo upload -->
+                <input
+                  ref="photoInput"
+                  type="file"
+                  accept="image/jpeg,image/jpg,image/png,image/webp"
+                  class="hidden"
+                  @change="handlePhotoUpload"
+                />
+                
+                <UButton 
+                  size="sm" 
+                  variant="outline"
+                  :loading="uploadingPhoto"
+                  :disabled="uploadingPhoto"
+                  @click="$refs.photoInput?.click()"
+                >
+                  <UIcon name="i-heroicons-camera" class="mr-2" />
+                  {{ player.photo ? 'Change Photo' : 'Upload Photo' }}
+                </UButton>
+                
+                <UButton
+                  v-if="player.photo"
+                  size="sm"
+                  color="red"
+                  variant="ghost"
+                  :loading="uploadingPhoto"
+                  :disabled="uploadingPhoto"
+                  @click="removePhoto"
+                >
+                  <UIcon name="i-heroicons-trash" class="mr-2" />
+                  Remove Photo
+                </UButton>
+              </div>
+              
+              <div class="mt-3 text-xs text-gray-500 space-y-1">
+                <p>Supported formats: JPEG, PNG, WebP</p>
+                <p>Maximum file size: 2MB</p>
+                <p v-if="uploadingPhoto" class="text-blue-600">Uploading photo...</p>
+              </div>
             </div>
           </UCard>
 
