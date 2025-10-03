@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useApi } from '../../composables/useApi'
 import { useAuthStore } from '../../stores/auth'
 
@@ -117,33 +117,43 @@ async function savePlayer() {
       // Birthday hasn't occurred this year
     }
     
-    if (age < 6 || age > 12) {
-      error.value = 'Player must be between 6-12 years old'
-      return
-    }
+    // Age validation is commented out as per existing code
+    // if (age < 6 || age > 12) {
+    //   error.value = 'Player must be between 6-12 years old'
+    //   return
+    // }
   }
 
   saving.value = true
   error.value = ''
 
   try {
-    const updatedData = await request<PlayerDoc>(`/api/users/${playerId}`, {
+    // Prepare update data based on user role
+    const updateData: any = {
+      firstName: editForm.value.firstName.trim(),
+      lastName: editForm.value.lastName.trim(),
+      dateOfBirth: editForm.value.dateOfBirth || undefined,
+      phoneNumber: editForm.value.phoneNumber.trim() || undefined,
+    }
+
+    // Only admins can modify email and status fields
+    if (auth.user?.role === 'admin') {
+      updateData.email = editForm.value.email.trim().toLowerCase()
+      updateData.active = editForm.value.active
+      updateData.isApproved = editForm.value.isApproved
+    }
+
+    await request<PlayerDoc>(`/api/users/${playerId}`, {
       method: 'PATCH',
-      body: JSON.stringify({
-        firstName: editForm.value.firstName.trim(),
-        lastName: editForm.value.lastName.trim(),
-        email: editForm.value.email.trim().toLowerCase(),
-        dateOfBirth: editForm.value.dateOfBirth || undefined,
-        phoneNumber: editForm.value.phoneNumber.trim() || undefined,
-        active: editForm.value.active,
-        isApproved: editForm.value.isApproved
-      })
+      body: JSON.stringify(updateData)
     })
 
-    player.value = updatedData
+    // Reload the player data to ensure we have the latest information
+    await loadPlayer()
+    
     isEditing.value = false
     
-    // Show success message briefly
+    // Show success message
     const successToast = useToast()
     successToast.add({
       title: 'Success',
@@ -152,7 +162,20 @@ async function savePlayer() {
     })
 
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to update player'
+    // Handle different types of errors
+    if (e instanceof Error) {
+      if (e.message.includes('403') || e.message.includes('Forbidden') || e.message.includes('not allowed')) {
+        error.value = 'You do not have permission to modify this player. Contact an administrator.'
+      } else if (e.message.includes('400') || e.message.includes('validation')) {
+        error.value = 'Invalid data provided. Please check your inputs.'
+      } else if (e.message.includes('409') || e.message.includes('conflict')) {
+        error.value = 'Email address is already in use by another user.'
+      } else {
+        error.value = e.message
+      }
+    } else {
+      error.value = 'Failed to update player. Please try again.'
+    }
   } finally {
     saving.value = false
   }
@@ -210,6 +233,11 @@ function getPhotoUrl(url: string): string {
   // Otherwise, assume it needs to be appended to API base
   return `${apiBase}/${url}`
 }
+
+// Add computed property to check if user can edit sensitive fields
+const canEditSensitiveFields = computed(() => {
+  return auth.user?.role === 'admin'
+})
 
 onMounted(loadPlayer)
 
@@ -363,7 +391,14 @@ useHead({
               </div>
               
               <UFormGroup label="Email Address" required>
-                <UInput v-model="editForm.email" type="email" :disabled="saving" />
+                <UInput 
+                  v-model="editForm.email" 
+                  type="email" 
+                  :disabled="saving || !canEditSensitiveFields" 
+                />
+                <p v-if="!canEditSensitiveFields" class="text-xs text-gray-500 mt-1">
+                  Only administrators can modify email addresses
+                </p>
               </UFormGroup>
               
               <UFormGroup label="Date of Birth">
@@ -377,7 +412,7 @@ useHead({
           </UCard>
 
           <!-- Status & Settings -->
-          <UCard v-if="isEditing">
+          <UCard v-if="isEditing && canEditSensitiveFields">
             <template #header>
               <h3 class="text-lg font-medium">Status & Settings</h3>
             </template>

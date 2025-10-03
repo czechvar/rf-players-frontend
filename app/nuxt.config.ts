@@ -92,10 +92,10 @@ async function createPlayer() {
       age-- // Birthday hasn't occurred this year
     }
     
-    if (age < 6 || age > 12) {
-      error.value = 'Player must be between 6-12 years old'
-      return
-    }
+    // if (age < 6 || age > 12) {
+    //   error.value = 'Player must be between 6-12 years old'
+    //   return
+    // }
   }
 
   loading.value = true
