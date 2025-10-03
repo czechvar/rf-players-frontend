@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, nextTick } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import { useApi } from '../composables/useApi'
 
@@ -10,6 +10,15 @@ const email = ref('')
 const password = ref('')
 const error = ref('')
 const loading = ref(false)
+
+// Stats data
+const stats = ref({
+  upcomingEvents: 0,
+  pastEvents: 0,
+  activePlayers: 0,
+  activeTrainers: 0
+})
+const statsLoading = ref(false)
 
 // Create a computed property to check if user is logged in
 const isLoggedIn = computed(() => {
@@ -23,6 +32,37 @@ onMounted(() => {
   //   navigateTo('/events')
   // }
 })
+
+// Load dashboard stats for admin/trainer
+async function loadStats() {
+  if (!['admin', 'trainer'].includes(auth.user?.role)) return
+  
+  statsLoading.value = true
+  try {
+    const today = new Date().toISOString().split('T')[0]
+    
+    // Load upcoming events
+    const upcomingEventsData = await request<{ docs: any[] }>(`/api/events?where[date][greater_than_equal]=${today}&limit=100`)
+    stats.value.upcomingEvents = upcomingEventsData.docs.length
+
+    // Load past events  
+    const pastEventsData = await request<{ docs: any[] }>(`/api/events?where[date][less_than]=${today}&limit=100`)
+    stats.value.pastEvents = pastEventsData.docs.length
+
+    // Load active players
+    const playersData = await request<{ docs: any[] }>('/api/users?where[role][equals]=player&where[active][not_equals]=false&limit=100')
+    stats.value.activePlayers = playersData.docs.length
+
+    // Load active trainers
+    const trainersData = await request<{ docs: any[] }>('/api/users?where[role][equals]=trainer&where[active][not_equals]=false&limit=100')
+    stats.value.activeTrainers = trainersData.docs.length
+
+  } catch (e) {
+    console.error('Failed to load stats:', e)
+  } finally {
+    statsLoading.value = false
+  }
+}
 
 async function login() {
   error.value = ''
@@ -45,9 +85,40 @@ async function login() {
     loading.value = false
   }
 }
+
+onMounted(() => {
+  if (isLoggedIn.value) {
+    loadStats()
+  }
+})
 </script>
 
 <template>
+        <!-- Quick Stats (Admin/Trainer) -->
+      <div v-if="['admin', 'trainer'].includes(auth.user?.role ?? '')" class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-2xl font-semibold mb-6">Quick Overview</h2>
+        <div v-if="statsLoading" class="flex justify-center py-8">
+          <ULoader />
+        </div>
+        <div v-else class="grid md:grid-cols-4 gap-6">
+          <div class="text-center">
+            <div class="text-3xl font-bold text-blue-600">{{ stats.upcomingEvents }}</div>
+            <div class="text-gray-600">Upcoming Events</div>
+          </div>
+          <div class="text-center">
+            <div class="text-3xl font-bold text-gray-600">{{ stats.pastEvents }}</div>
+            <div class="text-gray-600">Past Events</div>
+          </div>
+          <div class="text-center">
+            <div class="text-3xl font-bold text-green-600">{{ stats.activePlayers }}</div>
+            <div class="text-gray-600">Active Players</div>
+          </div>
+          <div class="text-center">
+            <div class="text-3xl font-bold text-purple-600">{{ stats.activeTrainers }}</div>
+            <div class="text-gray-600">Active Trainers</div>
+          </div>
+        </div>
+      </div>
   <!-- Show welcome dashboard if logged in -->
   <div v-if="isLoggedIn" class="min-h-screen bg-gray-50">
     <div class="max-w-4xl mx-auto py-12 px-4">
@@ -163,25 +234,6 @@ async function login() {
             View Attendance
           </UButton>
         </UCard>
-      </div>
-
-      <!-- Quick Stats (Admin/Trainer) -->
-      <div v-if="['admin', 'trainer'].includes(auth.user?.role)" class="bg-white rounded-lg shadow p-6">
-        <h2 class="text-2xl font-semibold mb-6">Quick Overview</h2>
-        <div class="grid md:grid-cols-3 gap-6">
-          <div class="text-center">
-            <div class="text-3xl font-bold text-blue-600">12</div>
-            <div class="text-gray-600">Upcoming Events</div>
-          </div>
-          <div class="text-center">
-            <div class="text-3xl font-bold text-green-600">45</div>
-            <div class="text-gray-600">Active Players</div>
-          </div>
-          <div class="text-center">
-            <div class="text-3xl font-bold text-purple-600">89%</div>
-            <div class="text-gray-600">Avg Attendance</div>
-          </div>
-        </div>
       </div>
     </div>
   </div>
