@@ -1,6 +1,7 @@
 import type { Config } from 'tailwindcss'
 
 export default <Partial<Config>>{
+  darkMode: 'class', // Controlled by Nuxt UI; light mode forced via plugin
   content: [
     './app/**/*.{vue,js,ts}',
     './components/**/*.{vue,js,ts}',
