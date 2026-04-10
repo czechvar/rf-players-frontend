@@ -2,17 +2,10 @@
 import { ref, onMounted, computed } from 'vue'
 import { useAuthStore } from '../../stores/auth'
 import { useApi } from '../../composables/useApi'
-
-interface EventDoc {
-  id: string
-  name: string
-  date: string
-  type: string
-  location?: string
-  locked?: boolean
-}
+import type { EventDoc } from '../../types'
 
 const { request } = useApi()
+const { t } = useI18n()
 const events = ref<EventDoc[]>([])
 const error = ref<string>('')
 const loading = ref<boolean>(true)
@@ -36,7 +29,7 @@ async function load() {
     const data = await request<{ docs: EventDoc[] }>(`/api/events?limit=25&sort=-date`)
     events.value = data.docs
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to load events'
+    error.value = e instanceof Error ? e.message : t.validation.loadFailed
   } finally {
     loading.value = false
   }
@@ -58,53 +51,53 @@ onMounted(load)
 <template>
   <div class="space-y-6">
     <div class="flex items-center justify-between">
-      <h1 class="text-2xl font-bold text-gray-900">Events</h1>
+      <h1 class="text-2xl font-bold text-gray-900">{{ t.events.title }}</h1>
     </div>
 
     <!-- Action buttons for trainers and admins -->
     <div v-if="auth.user && ['admin', 'trainer'].includes(auth.user.role)" class="flex flex-wrap gap-3">
-      <UButton 
-        icon="i-heroicons-plus" 
+      <UButton
+        icon="i-heroicons-plus"
         to="/events/create"
         variant="solid"
       >
-        Create Event
+        {{ t.events.createEvent }}
       </UButton>
-      <UButton 
-        icon="i-heroicons-users" 
+      <UButton
+        icon="i-heroicons-users"
         to="/players"
         variant="outline"
       >
-        View Players
+        {{ t.events.viewPlayers }}
       </UButton>
-      <UButton 
-        icon="i-heroicons-user-plus" 
+      <UButton
+        icon="i-heroicons-user-plus"
         to="/players/create"
         variant="ghost"
       >
-        Register Player
+        {{ t.events.registerPlayer }}
       </UButton>
     </div>
 
     <div v-if="loading" class="flex justify-center py-10">
       <ULoader />
     </div>
-    <UAlert v-else-if="error" color="red" variant="subtle" :title="'Error'" :description="error" />
+    <UAlert v-else-if="error" color="red" variant="subtle" :title="t.common.error" :description="error" />
     <div v-else>
-      <UEmptyState v-if="events.length === 0" icon="i-heroicons-calendar" title="No events" description="Events will appear here once created." />
+      <UEmptyState v-if="events.length === 0" icon="i-heroicons-calendar" :title="t.events.noEvents" :description="t.events.noEventsDesc" />
       <div v-else class="space-y-8">
-        
+
         <!-- Upcoming Events Section -->
         <div v-if="upcomingEvents.length > 0">
           <div class="flex items-center gap-2 mb-4">
             <UIcon name="i-heroicons-clock" class="w-5 h-5 text-blue-500" />
-            <h2 class="text-lg font-semibold text-gray-900">Upcoming Events</h2>
+            <h2 class="text-lg font-semibold text-gray-900">{{ t.events.upcoming }}</h2>
             <UBadge size="sm" color="blue" variant="soft">{{ upcomingEvents.length }}</UBadge>
           </div>
           <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <UCard 
-              v-for="e in upcomingEvents" 
-              :key="e.id" 
+            <UCard
+              v-for="e in upcomingEvents"
+              :key="e.id"
               :ui="{ body: { padding: 'p-4' } }"
               class="cursor-pointer hover:shadow-md transition-shadow border-l-4 border-l-blue-400"
               @click="navigateTo(`/events/${e.id}`)"
@@ -115,7 +108,7 @@ onMounted(load)
                     <p class="font-medium leading-tight">{{ e.name }}</p>
                     <p class="text-xs text-gray-500">{{ formatDateTime(e.date) }}</p>
                   </div>
-                  <UBadge v-if="e.locked" size="xs" color="gray" variant="soft">Locked</UBadge>
+                  <UBadge v-if="e.locked" size="xs" color="gray" variant="soft">{{ t.events.locked }}</UBadge>
                 </div>
               </template>
               <div class="space-y-2 text-xs">
@@ -131,7 +124,7 @@ onMounted(load)
               <template #footer>
                 <div class="flex justify-end">
                   <UButton size="xs" variant="ghost" icon="i-heroicons-arrow-right">
-                    View Details
+                    {{ t.events.viewDetails }}
                   </UButton>
                 </div>
               </template>
@@ -143,13 +136,13 @@ onMounted(load)
         <div v-if="pastEvents.length > 0">
           <div class="flex items-center gap-2 mb-4">
             <UIcon name="i-heroicons-archive-box" class="w-5 h-5 text-gray-500" />
-            <h2 class="text-lg font-semibold text-gray-900">Past Events</h2>
+            <h2 class="text-lg font-semibold text-gray-900">{{ t.events.past }}</h2>
             <UBadge size="sm" color="gray" variant="soft">{{ pastEvents.length }}</UBadge>
           </div>
           <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <UCard 
-              v-for="e in pastEvents" 
-              :key="e.id" 
+            <UCard
+              v-for="e in pastEvents"
+              :key="e.id"
               :ui="{ body: { padding: 'p-4' } }"
               class="cursor-pointer hover:shadow-md transition-shadow border-l-4 border-l-gray-300 opacity-90"
               @click="navigateTo(`/events/${e.id}`)"
@@ -160,7 +153,7 @@ onMounted(load)
                     <p class="font-medium leading-tight text-gray-700">{{ e.name }}</p>
                     <p class="text-xs text-gray-500">{{ formatDateTime(e.date) }}</p>
                   </div>
-                  <UBadge v-if="e.locked" size="xs" color="gray" variant="soft">Locked</UBadge>
+                  <UBadge v-if="e.locked" size="xs" color="gray" variant="soft">{{ t.events.locked }}</UBadge>
                 </div>
               </template>
               <div class="space-y-2 text-xs">
@@ -176,7 +169,7 @@ onMounted(load)
               <template #footer>
                 <div class="flex justify-end">
                   <UButton size="xs" variant="ghost" icon="i-heroicons-arrow-right" color="gray">
-                    View Details
+                    {{ t.events.viewDetails }}
                   </UButton>
                 </div>
               </template>
@@ -187,7 +180,7 @@ onMounted(load)
         <!-- Show message if only one section has events -->
         <div v-if="upcomingEvents.length === 0 && pastEvents.length > 0" class="text-center py-8">
           <UIcon name="i-heroicons-calendar-days" class="w-12 h-12 text-gray-400 mx-auto mb-3" />
-          <p class="text-gray-500">No upcoming events scheduled</p>
+          <p class="text-gray-500">{{ t.events.noUpcoming }}</p>
         </div>
 
       </div>

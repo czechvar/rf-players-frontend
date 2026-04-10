@@ -1,7 +1,10 @@
 <script setup lang="ts">
+import type { LoginResponse } from '../../types'
+
 const auth = useAuthStore()
 const { request } = useApi()
 const router = useRouter()
+const { t } = useI18n()
 
 const email = ref('')
 const password = ref('')
@@ -12,11 +15,11 @@ async function login() {
   error.value = ''
   loading.value = true
   try {
-    const data = await request<{ token: string; user: any }>('/api/users/login', {
+    const data = await request<LoginResponse>('/api/users/login', {
       method: 'POST',
       body: JSON.stringify({ email: email.value, password: password.value })
     })
-  ;(auth as any).setSession(data.token, data.user)
+    ;(auth as any).setSession(data.token, data.user)
     router.push('/')
   } catch (e: any) {
     error.value = e.message
@@ -29,21 +32,21 @@ async function login() {
 <template>
   <div class="max-w-sm mx-auto py-10 space-y-6">
     <div class="space-y-2 text-center">
-      <h1 class="text-xl font-semibold">Login</h1>
-      <p class="text-xs text-gray-500">Access your dashboard</p>
+      <h1 class="text-xl font-semibold">{{ t.auth.loginTitle }}</h1>
+      <p class="text-xs text-gray-500">{{ t.auth.loginSubtitle }}</p>
     </div>
-    <UAlert v-if="error" color="red" variant="subtle" :title="'Login failed'" :description="error" />
+    <UAlert v-if="error" color="red" variant="subtle" :title="t.auth.loginFailed" :description="error" />
     <UForm :state="{}" @submit.prevent="login" class="space-y-4">
-      <UFormGroup label="Email">
+      <UFormGroup :label="t.auth.email">
         <UInput v-model="email" type="email" required />
       </UFormGroup>
-      <UFormGroup label="Password">
+      <UFormGroup :label="t.auth.password">
         <UInput v-model="password" type="password" required />
       </UFormGroup>
-      <UButton type="submit" block :loading="loading">Login</UButton>
+      <UButton type="submit" block :loading="loading">{{ t.auth.loginButton }}</UButton>
     </UForm>
     <div class="text-center">
-      <UButton to="/auth/register" variant="link" size="xs">Create account</UButton>
+      <UButton to="/auth/register" variant="link" size="xs">{{ t.auth.createAccount }}</UButton>
     </div>
   </div>
 </template>

@@ -1,9 +1,5 @@
 <script setup lang="ts">
-interface PlayerPhoto {
-  id: string
-  url: string
-  filename: string
-}
+import type { PlayerPhoto } from '../types'
 
 interface Props {
   firstName: string
@@ -26,36 +22,26 @@ const sizeClasses = {
 function getPhotoUrl(url: string): string {
   const config = useRuntimeConfig()
   const apiBase = config.public.apiBase
-  
-  // If URL is already absolute (starts with http), return as is
-  if (url.startsWith('http')) {
-    return url
-  }
-  
-  // If URL starts with /, it's relative to the API base
-  if (url.startsWith('/')) {
-    return `${apiBase}${url}`
-  }
-  
-  // Otherwise, assume it needs to be appended to API base
+  if (url.startsWith('http')) return url
+  if (url.startsWith('/')) return `${apiBase}${url}`
   return `${apiBase}/${url}`
 }
 
-const initials = computed(() => 
+const initials = computed(() =>
   `${props.firstName.charAt(0)}${props.lastName.charAt(0)}`
 )
 </script>
 
 <template>
   <div :class="[sizeClasses[size], 'rounded-full overflow-hidden']">
-    <img 
+    <img
       v-if="photo"
-      :src="getPhotoUrl(photo.url)" 
+      :src="getPhotoUrl(photo.url)"
       :alt="`${firstName} ${lastName}`"
       class="w-full h-full object-cover"
     >
-    <div 
-      v-else 
+    <div
+      v-else
       class="w-full h-full bg-blue-100 flex items-center justify-center"
     >
       <span :class="['font-medium text-blue-600', size === 'xl' ? 'text-2xl' : 'text-sm']">
