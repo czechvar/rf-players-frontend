@@ -27,6 +27,14 @@
             >
               {{ t.nav.players }}
             </NuxtLink>
+            <NuxtLink
+              v-if="['admin', 'trainer'].includes(auth.user.role)"
+              to="/admin/approvals"
+              class="text-gray-500 hover:text-primary-600 px-3 py-2 text-sm font-medium"
+              :class="{ 'text-primary-600 border-b-2 border-primary-600': route.path.startsWith('/admin/approvals') }"
+            >
+              {{ t.nav.approvals }}
+            </NuxtLink>
           </nav>
 
           <!-- User Menu -->

@@ -67,15 +67,54 @@ const cs = {
     sessionExpired: 'Relace vypršela. Přihlaste se znovu.',
 
     registerTitle: 'Vytvořit účet',
-    registerSubtitle: 'Administrátor nebo Trenér',
+    registerSubtitle: 'Registrace hráče nebo rodiče',
     registerButton: 'Registrovat',
     registerFailed: 'Registrace se nezdařila',
     registerSuccess: 'Účet vytvořen! Přesměrování…',
     firstName: 'Jméno',
     lastName: 'Příjmení',
     role: 'Role',
+    selectRole: 'Vyberte roli',
+    playerRole: 'Hráč',
+    parentRole: 'Rodič',
+    dateOfBirth: 'Datum narození',
     backToLogin: 'Zpět na přihlášení',
     createAccount: 'Vytvořit účet',
+    alreadyHaveAccount: 'Již máte účet?',
+
+    // Verification & approval
+    verifyTitle: 'Ověření e-mailu',
+    verifySubtitle: 'Ověřujeme vaši e-mailovou adresu…',
+    verifySuccess: 'E-mail úspěšně ověřen!',
+    verifyFailed: 'Ověření e-mailu se nezdařilo. Odkaz může být neplatný nebo expirovaný.',
+    verifyRedirectApproved: 'Váš účet je schválen. Přesměrování na přihlášení…',
+    verifyRedirectPending: 'Váš účet čeká na schválení trenérem.',
+
+    pendingApprovalTitle: 'Čeká na schválení',
+    pendingApprovalMessage: 'Váš účet byl vytvořen a e-mail ověřen. Nyní čeká na schválení trenérem nebo administrátorem.',
+    pendingApprovalHint: 'Budete informováni, jakmile bude váš účet schválen.',
+    goToLogin: 'Přejít na přihlášení',
+
+    registrationCompleteTitle: 'Registrace dokončena!',
+    registrationCompleteMessage: 'Na vaši e-mailovou adresu jsme odeslali ověřovací odkaz. Klikněte na něj pro ověření vašeho účtu.',
+    registrationCompleteHint: 'Prozatím klikněte na tlačítko níže pro ověření (e-mailové odesílání bude přidáno v budoucnu).',
+    verifyNow: 'Ověřit e-mail nyní',
+
+    // Login guards
+    emailNotVerified: 'Váš e-mail ještě nebyl ověřen. Zkontrolujte svou schránku.',
+    accountNotApproved: 'Váš účet čeká na schválení trenérem.',
+
+    // Admin approval page
+    approvalsTitle: 'Schválení uživatelů',
+    approvalsSubtitle: 'Uživatelé čekající na schválení registrace',
+    noApprovals: 'Žádní uživatelé nečekají na schválení',
+    noApprovalsDesc: 'Všechny registrace byly zpracovány.',
+    approveUser: 'Schválit',
+    rejectUser: 'Zamítnout',
+    userApproved: 'Uživatel byl schválen',
+    userRejected: 'Uživatel byl zamítnut',
+    approvalFailed: 'Schválení se nezdařilo',
+    registeredAt: 'Registrován: {date}',
   },
 
   // ── Dashboard ────────────────────────────────────────
@@ -319,6 +358,10 @@ const cs = {
     lastNameRequired: 'Příjmení je povinné',
     emailRequired: 'E-mail je povinný',
     emailInvalid: 'Zadejte platnou e-mailovou adresu',
+    passwordRequired: 'Heslo je povinné',
+    passwordMin: 'Heslo musí mít alespoň 6 znaků',
+    roleRequired: 'Vyberte roli',
+    dateOfBirthRequired: 'Datum narození je povinné pro hráče',
     eventNameRequired: 'Název akce je povinný',
     dateRequired: 'Datum a čas jsou povinné',
     locationRequired: 'Místo je povinné',

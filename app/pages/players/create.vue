@@ -119,6 +119,7 @@ async function createPlayer() {
         dateOfBirth: form.value.dateOfBirth || undefined,
         phoneNumber: form.value.phoneNumber.trim() || undefined,
         isApproved: true,
+        emailVerified: true,
         active: true
       })
     })

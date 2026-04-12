@@ -8,6 +8,8 @@ export interface AuthUser {
   role: UserRole
   firstName?: string
   lastName?: string
+  emailVerified?: boolean
+  isApproved?: boolean
 }
 
 export interface PlayerPhoto {
@@ -26,6 +28,7 @@ export interface UserDoc {
   phoneNumber?: string
   active: boolean
   isApproved: boolean
+  emailVerified: boolean
   parentId?: string | UserDoc
   playerIds?: string[] | UserDoc[]
   photo?: PlayerPhoto
@@ -90,4 +93,22 @@ export interface LockResponse {
   success: boolean
   message: string
   event: EventDoc
+}
+
+export interface RegisterResponse {
+  success: boolean
+  message: string
+  userId: string
+  verificationToken: string
+}
+
+export interface VerifyEmailResponse {
+  success: boolean
+  message: string
+  isApproved: boolean
+}
+
+export interface PendingUsersResponse {
+  docs: UserDoc[]
+  totalDocs: number
 }

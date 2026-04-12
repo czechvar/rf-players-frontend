@@ -51,6 +51,9 @@ export const useAuthStore = defineStore('auth', () => {
   const isTrainerOrAdmin = computed(() =>
     user.value ? ['admin', 'trainer'].includes(user.value.role) : false
   )
+  const isEmailVerified = computed(() => user.value?.emailVerified ?? false)
+  const isApproved = computed(() => user.value?.isApproved ?? false)
+  const isFullyActive = computed(() => isAuthenticated.value && isEmailVerified.value && isApproved.value)
 
   function setSession(newToken: string, newUser: AuthUser) {
     token.value = newToken
@@ -69,6 +72,9 @@ export const useAuthStore = defineStore('auth', () => {
     user: readonly(user),
     isAuthenticated,
     isTrainerOrAdmin,
+    isEmailVerified,
+    isApproved,
+    isFullyActive,
     setSession,
     clear
   }
